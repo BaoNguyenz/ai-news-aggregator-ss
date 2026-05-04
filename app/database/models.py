@@ -38,7 +38,7 @@ class AnthropicArticle(Base):
     title = Column(String, nullable=False)
     url = Column(String, nullable=False)
     description = Column(Text)
-    published_at = Column(DateTime, nullable=False)
+    published_at = Column(DAnnouncementsateTime, nullable=False)
     category = Column(String, nullable=True)
     markdown = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
