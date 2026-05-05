@@ -9,6 +9,8 @@ from app.services.process_anthropic import process_anthropic_markdown
 from app.services.process_youtube import process_youtube_transcripts
 from app.services.process_digest import process_digests
 from app.services.process_email import send_digest_email
+from app.database.models import Base
+from app.database.connection import engine
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,6 +36,15 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
     }
     
     try:
+        logger.info("\n[0/5] Ensuring database tables exist...")
+        try:
+            with engine.connect() as conn:
+                Base.metadata.create_all(engine)
+                logger.info("✓ Database tables verified/created")
+        except Exception as e:
+            logger.error(f"Failed to create database tables: {e}")
+            raise
+        
         logger.info("\n[1/5] Scraping articles from sources...")
         scraping_results = run_scrapers(hours=hours)
         results["scraping"] = {
