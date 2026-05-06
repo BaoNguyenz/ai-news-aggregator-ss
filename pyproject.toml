@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "feedparser>=6.0.12",
-    "html-to-markdown>=2.7.1",
+    "html-to-markdown==2.7.1",
     "markdown>=3.7.0",
     "openai>=2.7.2",
     "psycopg2-binary>=2.9.11",
