@@ -1,158 +1,265 @@
-# Deployment Guide: Render.com
+# AI News Aggregator
 
-This guide walks you through deploying the AI News Aggregator to Render.com with PostgreSQL and scheduled daily execution.
+An intelligent news aggregation system that scrapes AI-related content from multiple sources (YouTube channels, RSS feeds), processes them with LLM-powered summarization, curates personalized digests based on user preferences, and delivers daily email summaries.
 
-## Prerequisites
+## Overview
 
-- Render.com account (sign up at https://render.com)
-- GitHub account with this repository
+This project aggregates AI news from multiple sources:
+- **YouTube Channels**: Scrapes videos and transcripts from configured channels
+- **RSS Feeds**: Monitors OpenAI and Anthropic blog posts
+- **Processing**: Converts content to markdown, generates summaries, and creates digests
+- **Curation**: Ranks articles by relevance to user profile using LLM
+- **Delivery**: Sends personalized daily email digests
+
+## Architecture
+
+```mermaid
+graph LR
+    A[Sources<br/>YouTube<br/>RSS Feeds] --> B[Scrapers<br/>BaseScraper<br/>Registry Pattern]
+    B --> C[(Database<br/>PostgreSQL)]
+    C --> D[Processors<br/>Markdown<br/>Transcripts<br/>Digests]
+    D --> C
+    C --> E[Curator<br/>LLM Ranking]
+    E --> F[Email<br/>Personalized Digest]
+    F --> G[Delivery<br/>Gmail SMTP]
+    
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style C fill:#e8f5e9,stroke:#4caf50,stroke-width:3px
+    style D fill:#fff4e1
+    style E fill:#f3e5f5
+    style F fill:#f3e5f5
+    style G fill:#ffe1f5
+```
+
+## How It Works
+
+### Pipeline Flow
+
+1. **Scraping** (`app/runner.py`)
+   - Runs all registered scrapers
+   - Fetches articles/videos from configured sources
+   - Saves raw content to database
+
+2. **Processing** (`app/services/process_*.py`)
+   - **Anthropic**: Converts HTML articles to markdown
+   - **YouTube**: Fetches video transcripts
+   - **Digests**: Generates summaries using LLM
+
+3. **Curation** (`app/services/process_curator.py`)
+   - Ranks digests by relevance to user profile
+   - Uses LLM to score and rank articles
+
+4. **Email Generation** (`app/services/process_email.py`)
+   - Creates personalized email digest
+   - Selects top N articles
+   - Generates introduction and formats content
+   - Marks digests as sent to prevent duplicates
+
+5. **Delivery** (`app/services/email.py`)
+   - Sends HTML email via Gmail SMTP
+
+### Daily Pipeline
+
+The `run_daily_pipeline()` function orchestrates all steps:
+- Ensures database tables exist
+- Scrapes all sources
+- Processes content (markdown, transcripts)
+- Creates digests
+- Sends email
+
+## Project Structure
+
+```
+app/
+├── agent/              # LLM agents for processing
+│   ├── base.py        # Base agent class
+│   ├── curator_agent.py   # Article ranking
+│   ├── digest_agent.py    # Summary generation
+│   └── email_agent.py     # Email content generation
+├── config.py          # Configuration (YouTube channels)
+├── database/          # Database layer
+│   ├── models.py      # SQLAlchemy models
+│   ├── repository.py # Data access layer
+│   └── connection.py  # DB connection & environment
+├── profiles/          # User profile configuration
+│   └── user_profile.py
+├── scrapers/          # Content scrapers
+│   ├── base.py        # Base scraper for RSS feeds
+│   ├── anthropic.py   # Anthropic RSS scraper
+│   ├── openai.py      # OpenAI RSS scraper
+│   └── youtube.py     # YouTube channel scraper
+├── services/          # Processing services
+│   ├── base.py        # Base process service
+│   ├── process_anthropic.py
+│   ├── process_youtube.py
+│   ├── process_digest.py
+│   ├── process_curator.py
+│   ├── process_email.py
+│   └── email.py       # Email sending
+├── daily_runner.py    # Main pipeline orchestrator
+└── runner.py          # Scraper registry & execution
+```
+
+## Adding New Scrapers
+
+### RSS Feed Scraper (Easiest)
+
+Create a new file in `app/scrapers/`:
+
+```python
+from typing import List
+from .base import BaseScraper, Article
+
+class MyArticle(Article):
+    pass
+
+class MyScraper(BaseScraper):
+    @property
+    def rss_urls(self) -> List[str]:
+        return ["https://example.com/feed.xml"]
+
+    def get_articles(self, hours: int = 24) -> List[MyArticle]:
+        return [MyArticle(**a.model_dump()) for a in super().get_articles(hours)]
+```
+
+Then register it in `app/runner.py`:
+
+```python
+from .scrapers.my_scraper import MyScraper
+
+def _save_my_articles(scraper, repo, hours):
+    return _save_rss_articles(scraper, repo, hours, repo.bulk_create_my_articles)
+
+SCRAPER_REGISTRY = [
+    # ... existing scrapers
+    ("my_source", MyScraper(), _save_my_articles),
+]
+```
+
+### Custom Scraper
+
+For non-RSS sources, inherit from the base pattern:
+
+```python
+class CustomScraper:
+    def get_articles(self, hours: int = 24) -> List[Article]:
+        # Your custom scraping logic
+        pass
+```
+
+## Setup
+
+### Prerequisites
+
+- Python 3.12+
+- PostgreSQL database
 - OpenAI API key
-- Gmail account with app password (for email sending)
+- Gmail app password (for email sending)
+- Webshare proxy credentials (optional, for YouTube transcript fetching)
 
-## Step-by-Step Deployment
+### Installation
 
-### 1. Create Render Account
-
-1. Go to https://render.com
-2. Sign up for a free account (or log in if you already have one)
-3. Verify your email address
-
-### 2. Connect GitHub Repository
-
-1. In Render dashboard, click "New" → "Blueprint"
-2. Connect your GitHub account if not already connected
-3. Select the repository: `ai-news-aggregator`
-4. Select the branch: `deployment` (or `master` if you merge)
-5. Render will detect `render.yaml` automatically
-
-### 3. Review Blueprint Configuration
-
-Render will read `render.yaml` and show you:
-- **PostgreSQL Database**: `ai-news-aggregator-db`
-- **Cron Job**: `daily-digest-job` (runs daily at midnight UTC)
-
-Click "Apply" to create these services.
-
-### 4. Set Environment Variables
-
-After services are created, you need to set environment variables for the cron job:
-
-1. Go to the `daily-digest-job` service in Render dashboard
-2. Navigate to "Environment" tab
-3. Add the following variables:
-
-```
-OPENAI_API_KEY=your_openai_api_key_here
-MY_EMAIL=your_email@gmail.com
-APP_PASSWORD=your_gmail_app_password_here
-```
-
-**Note**: `DATABASE_URL` is automatically set by Render - you don't need to add it manually.
-
-### 5. Initialize Database
-
-The database tables will be created automatically when the cron job runs for the first time (via `app.database.create_tables` in the Dockerfile).
-
-Alternatively, you can manually trigger table creation:
-
-1. Go to the cron job service
-2. Click "Manual Deploy" → "Deploy latest commit"
-3. Or wait for the scheduled run
-
-### 6. Verify Deployment
-
-1. Check the cron job logs in Render dashboard
-2. Look for successful execution messages
-3. Verify email was sent (check your inbox)
-
-### 7. Adjust Schedule (Optional)
-
-To change when the daily digest runs:
-
-1. Edit `render.yaml`:
-   ```yaml
-   schedule: "0 8 * * *"  # 8 AM UTC instead of midnight
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   uv sync
    ```
-2. Push changes to GitHub
-3. Render will automatically update
 
-**Cron Schedule Format**: `minute hour day month weekday`
-- `0 0 * * *` = Daily at midnight UTC
-- `0 8 * * *` = Daily at 8 AM UTC
-- `0 0 * * 1` = Every Monday at midnight UTC
+3. Configure environment variables (copy `app/example.env` to `.env`):
+   ```bash
+   OPENAI_API_KEY=your_key
+   MY_EMAIL=your_email@gmail.com
+   APP_PASSWORD=your_gmail_app_password
+   DATABASE_URL=postgresql://user:pass@host:port/db
+   ENVIRONMENT=LOCAL  # Optional: auto-detected from DATABASE_URL if contains "render.com"
+   
+   # Optional: Webshare Proxy (for YouTube transcript fetching)
+   # Get credentials from https://www.webshare.io/
+   WEBSHARE_USERNAME=your_username
+   WEBSHARE_PASSWORD=your_password
+   ```
+   
+   **Note**: Webshare proxy is optional. If not provided, YouTube transcript fetching will work without a proxy but may be rate-limited.
 
-## Environment Variables Reference
+4. Initialize database:
+   ```bash
+   uv run python -m app.database.create_tables
+   ```
+   
+   Or check database connection:
+   ```bash
+   uv run python -m app.database.check_connection
+   ```
 
-| Variable | Required | Description | Where to Set |
-|----------|----------|-------------|--------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string | Auto-set by Render |
-| `OPENAI_API_KEY` | Yes | OpenAI API key for LLM | Render dashboard |
-| `MY_EMAIL` | Yes | Gmail address for sending | Render dashboard |
-| `APP_PASSWORD` | Yes | Gmail app password | Render dashboard |
+5. Configure YouTube channels in `app/config.py`
 
-## Troubleshooting
+6. Update user profile in `app/profiles/user_profile.py`
 
-### Database Connection Issues
+### Running
 
-- Verify `DATABASE_URL` is set (should be automatic)
-- Check database service is running
-- Verify network connectivity between services
-
-### Cron Job Not Running
-
-- Check cron job logs in Render dashboard
-- Verify schedule syntax in `render.yaml`
-- Ensure Docker build succeeded
-
-### Email Not Sending
-
-- Verify `MY_EMAIL` and `APP_PASSWORD` are correct
-- Check Gmail app password is valid (not regular password)
-- Review email service logs for errors
-
-### Build Failures
-
-- Check Dockerfile syntax
-- Verify all dependencies in `requirements.txt`
-- Review build logs for specific errors
-
-## Local Development
-
-For local development, use docker-compose:
-
+**Full pipeline:**
 ```bash
-cd docker
-docker compose up -d
+uv run main.py
 ```
 
-This starts PostgreSQL locally. Set environment variables in `.env` file (copy from `app/example.env`).
+**Individual steps:**
+```bash
+# Scraping
+uv run python -m app.runner
 
-## Updating the Deployment
+# Processing
+uv run python -m app.services.process_anthropic
+uv run python -m app.services.process_youtube
+uv run python -m app.services.process_digest
 
-1. Make changes to code
-2. Commit and push to GitHub
-3. Render automatically rebuilds and redeploys
-4. For cron jobs, changes take effect on next scheduled run
+# Curation
+uv run python -m app.services.process_curator
 
-## Cost Considerations
+# Email
+uv run python -m app.services.process_email
+```
 
-**Free Tier Limits:**
-- PostgreSQL: 90 days retention, 1GB storage
-- Cron jobs: Limited execution time
+## Deployment
 
-**Recommended for Production:**
-- Upgrade to Starter plan ($7/month) for PostgreSQL
-- Ensures data persistence and better performance
+### Render.com
 
-## Monitoring
+The project is configured for deployment on Render.com:
 
-- **Logs**: View in Render dashboard under each service
-- **Database**: Check connection count and storage usage
-- **Cron Jobs**: Monitor execution history and success rate
+1. **Database**: PostgreSQL service (auto-configured)
+2. **Cron Job**: Scheduled daily execution via `render.yaml`
+3. **Environment**: Automatically detected as PRODUCTION when `DATABASE_URL` contains "render.com" (no manual setting needed)
 
-## Support
+See `RENDER_SETUP.md` for detailed deployment instructions.
 
-- Render Documentation: https://render.com/docs
-- Render Support: Available in dashboard
-- Project Issues: Check GitHub repository issues
+### Docker
 
+Build and run:
+```bash
+docker build -t ai-news-aggregator .
+docker run --env-file .env ai-news-aggregator
+```
+
+## Key Features
+
+- **Modular Architecture**: Base classes make it easy to extend
+- **Scraper Registry**: Add new sources with minimal code
+- **LLM-Powered**: Uses OpenAI for summarization and curation
+- **Personalized**: User profile-based ranking
+- **Duplicate Prevention**: Tracks sent digests
+- **Environment Aware**: Supports LOCAL and PRODUCTION environments
+
+## Technology Stack
+
+- **Python 3.12+**: Core language
+- **PostgreSQL**: Database
+- **SQLAlchemy**: ORM
+- **Pydantic**: Data validation
+- **OpenAI API**: LLM processing
+- **feedparser**: RSS parsing
+- **youtube-transcript-api**: Video transcripts
+- **UV**: Package management
+
+## License
+
+MIT
