@@ -269,7 +269,7 @@ created_at                      sent_at         ← NULL until email is sent
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/ai-news-aggregator.git
+   git clone https://github.com/BaoNguyenz/ai-news-aggregator-ss.git
    cd ai-news-aggregator
    ```
 
@@ -280,23 +280,23 @@ created_at                      sent_at         ← NULL until email is sent
 
 3. Configure environment variables — copy `app/example.env` to `app/.env`:
    ```env
-   OPENAI_API_KEY=your_openai_api_key
-   MY_EMAIL=your_email@gmail.com
-   APP_PASSWORD=your_gmail_app_password
+   OPENAI_API_KEY=
+   MY_EMAIL=
+   APP_PASSWORD=
 
    # Option A: Full DATABASE_URL (recommended)
-   DATABASE_URL=postgresql://user:password@host:5432/ai_news_aggregator
+   DATABASE_URL=
 
-   # Option B: Individual components (falls back to localhost)
-   # POSTGRES_USER=postgres
-   # POSTGRES_PASSWORD=postgres
-   # POSTGRES_HOST=localhost
-   # POSTGRES_PORT=5432
-   # POSTGRES_DB=ai_news_aggregator
+   Option B: Individual components (falls back to localhost)
+   POSTGRES_USER=postgres
+   POSTGRES_PASSWORD=postgres
+   POSTGRES_HOST=localhost
+   POSTGRES_PORT=5432
+   POSTGRES_DB=ai_news_aggregator
 
-   # Optional: Webshare proxy for YouTube transcript fetching
-   # WEBSHARE_USERNAME=your_username
-   # WEBSHARE_PASSWORD=your_password
+   Optional: Webshare proxy for YouTube transcript fetching
+   WEBSHARE_USERNAME=your_username
+   WEBSHARE_PASSWORD=your_password
    ```
 
 4. Initialize the database:
