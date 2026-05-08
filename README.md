@@ -295,8 +295,8 @@ created_at                      sent_at         ← NULL until email is sent
    POSTGRES_DB=ai_news_aggregator
 
    Optional: Webshare proxy for YouTube transcript fetching
-   WEBSHARE_USERNAME=your_username
-   WEBSHARE_PASSWORD=your_password
+   WEBSHARE_USERNAME=
+   WEBSHARE_PASSWORD=
    ```
 
 4. Initialize the database:
