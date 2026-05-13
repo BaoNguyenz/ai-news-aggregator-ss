@@ -411,3 +411,9 @@ docker run --env-file app/.env ai-news-aggregator
 ## License
 
 MIT
+
+---
+
+## Acknowledgements
+
+A special thanks to [Dave Ebbelaar](https://www.youtube.com/@daveebbelaar) for his detailed tutorials and guidance that made this project possible!
